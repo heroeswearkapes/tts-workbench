@@ -1,0 +1,31 @@
+services:
+  tts-workbench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: tts-workbench:dev
+    container_name: tts-workbench-dev
+
+    init: true
+
+    ports:
+      - "${TTS_PORT:-7860}:7860"
+
+    environment:
+      GRADIO_SERVER_NAME: 0.0.0.0
+      GRADIO_SERVER_PORT: 7860
+      TTS_WORKBENCH_LOG_LEVEL: DEBUG
+
+    volumes:
+      # Development source mount
+      - ./src:/app/src:ro
+
+      # Persistent data
+      - ${TTS_DATA_ROOT:-./models}:/models
+      - ${TTS_VOICES_ROOT:-./voices}:/voices
+      - ${TTS_INPUT_ROOT:-./input}:/input
+      - ${TTS_OUTPUT_ROOT:-./output}:/output
+      - ${CONFIG_PATH:-./config}:/config
+
+    restart: unless-stopped

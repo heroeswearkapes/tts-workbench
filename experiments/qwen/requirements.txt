@@ -1,0 +1,3 @@
+# Install a platform-specific, matching torch/torchaudio pair before this file.
+# qwen-tts pins its compatible Transformers and Accelerate releases.
+qwen-tts==0.1.1

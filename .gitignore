@@ -1,0 +1,41 @@
+# Project instructions (local only)
+AGENTS.md
+
+# Runtime data
+/models/
+/voices/
+/input/
+/output/
+
+# Local configuration / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tool caches
+.cache/
+.mypy_cache/
+.ruff_cache/
+
+# Docker/runtime artifacts
+*.tar
+*.tar.gz
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Local maintainer scripts
+/scripts/

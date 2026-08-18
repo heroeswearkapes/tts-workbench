@@ -1,0 +1,22 @@
+services:
+  tts-workbench:
+    image: ${IMAGE_NAME}:${IMAGE_TAG}
+    container_name: tts-workbench
+    devices:
+      - ${XPU_DEVICE:-/dev/dri/renderD131}:${XPU_DEVICE:-/dev/dri/renderD131}
+    init: true
+    ports:
+      - "${TTS_PORT}:7860"
+    environment:
+      GRADIO_SERVER_NAME: 0.0.0.0
+      GRADIO_SERVER_PORT: 7860
+      TTS_WORKBENCH_LOG_LEVEL: INFO
+      ENABLE_XPU: "true"
+      TTS_WORKBENCH_LOG_LEVEL: INFO
+    volumes:
+      - ${TTS_DATA_ROOT}/models:/models
+      - ${TTS_DATA_ROOT}/voices:/voices
+      - ${TTS_DATA_ROOT}/input:/input
+      - ${TTS_DATA_ROOT}/output:/output
+      - ${CONFIG_PATH}:/config
+    restart: unless-stopped
