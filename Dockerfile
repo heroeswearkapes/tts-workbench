@@ -28,6 +28,7 @@ RUN apt-get update \
         libze1 \
         libsndfile1 \
         sox \
+        tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-runtime /usr/local /usr/local
