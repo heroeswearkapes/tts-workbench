@@ -3,7 +3,7 @@
 from array import array
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 import json
 import math
 import os
@@ -160,7 +160,7 @@ class KokoroSession:
                 raise EngineRuntimeError(f"Kokoro generation failed: {error}") from error
 
             job_id = uuid4().hex
-            job_dir = self.config.output_dir / datetime.now(UTC).date().isoformat() / job_id
+            job_dir = self.config.output_dir / datetime.now().date().isoformat() / job_id
             job_dir.mkdir(parents=True, exist_ok=False)
             audio_path = job_dir / "audio.wav"
             write_pcm16_wav(audio_path, samples, self.config.sample_rate)
