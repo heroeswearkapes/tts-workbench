@@ -12,7 +12,8 @@ CustomVoice runtime. Models load only when first used and generated audio and
 metadata remain in local storage.
 
 [Quick start](#quick-start) · [Engines](#engine-support) ·
-[Hardware](#hardware-support) · [Storage](#storage-layout) ·
+[Hardware](#hardware-support) · [Timezone](#timezone-and-output-folders) ·
+[Storage](#storage-layout) ·
 [Architecture](#development-architecture) · [Troubleshooting](#troubleshooting)
 
 ## Feature overview
@@ -40,27 +41,47 @@ is optional. The default Compose configuration is CPU-compatible and does not
 require `/dev/dri`.
 
 ```bash
-mkdir -p models voices input output config
-docker compose up --build
+git clone https://github.com/heroeswearkapes/tts-workbench.git
+cd tts-workbench
+test -f .env || cp .env.example .env
 ```
 
-Open <http://localhost:7860>, select an engine and model, enter text, and
+For this first-time setup, edit `.env` before starting the container. Set
+`TTS_DATA_ROOT` to the parent directory for your models, voices, input, and
+output, and set `CONFIG_PATH` to your configuration directory. Set `TZ` to your
+preferred timezone if you want local-date output folders; Compose defaults to
+`Etc/UTC`. For example:
+
+```dotenv
+TZ=America/New_York
+```
+
+Pull the published image and start the service:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Open <http://localhost:7860> (or the port selected with `TTS_PORT`), select an
+engine and model, enter text, and
 generate audio. The first request for an engine may take longer while its model
 and voice assets download and the runtime loads.
 
-Compose mounts the working directories automatically:
+The standard Compose configuration mounts the host paths selected in `.env`:
 
-| Repository path | Container path | Contains |
+| Host path | Container path | Contains |
 | --- | --- | --- |
-| `models/` | `/models` | Model weights and framework caches |
-| `voices/` | `/voices` | Preset voice assets |
-| `input/` | `/input` | Persistent reference material |
-| `output/` | `/output` | Generated audio and metadata |
-| `config/` | `/config` | Persistent application configuration |
+| `${TTS_DATA_ROOT}/models` | `/models` | Model weights and framework caches |
+| `${TTS_DATA_ROOT}/voices` | `/voices` | Preset voice assets |
+| `${TTS_DATA_ROOT}/input` | `/input` | Persistent reference material |
+| `${TTS_DATA_ROOT}/output` | `/output` | Generated audio and metadata |
+| `${CONFIG_PATH}` | `/config` | Persistent application configuration |
 
-Press `Ctrl+C` to stop the foreground service, then run `docker compose down`
-when you want to remove its container. Intel XPU users should build the image
-normally and use the [device-passthrough command](#intel-xpu-docker-run).
+Use `docker compose logs -f` to follow logs and `docker compose down` to stop
+and remove the service container. Data in the configured host directories is
+retained. Intel XPU users can use the same published image with the
+[device-passthrough command](#intel-xpu-docker-run).
 
 ## Engine support
 
@@ -208,23 +229,32 @@ currently validated execution mode.
 
 ## Installation
 
-### Docker development environment
+### Docker Compose
 
 Docker is the recommended way to run all current engine dependencies together.
 The image uses Ubuntu 26.04 with Python 3.11 copied from the official Python
 runtime stage. It includes Gradio, Kokoro, F5-TTS, Qwen3-TTS, FFmpeg,
-libsndfile, SoX, eSpeak NG, the PyTorch XPU build, and the Intel GPU userspace
-runtime.
+libsndfile, SoX, eSpeak NG, the PyTorch XPU build, the Intel GPU userspace
+runtime, and `tzdata` for named timezone support.
 
-Build and start the CPU-compatible Compose service:
+After configuring `.env` as described in [Quick start](#quick-start), start the
+CPU-compatible service with the published image:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
 
-Open <http://localhost:7860>. The Compose service exposes port `7860`, mounts
-the source tree read-only for development, and persists all five storage paths.
-The same image starts normally without `/dev/dri` and falls back to CPU.
+The standard Compose file uses `${IMAGE_NAME}:${IMAGE_TAG}` from `.env`,
+persists all five storage paths, and exposes port `7860` through the configured
+host port. It runs the source packaged in the image. The same image starts
+normally without `/dev/dri` and falls back to CPU.
+
+For a local image build, run `docker build -t tts-workbench:dev .` from the
+repository root. The separate `docker-compose.dev.yml` is intended for source
+development and mounts `./src` read-only into the container. Its storage
+variables differ from the standard Compose file, so review its volume mappings
+before using it with an existing `.env`.
 
 Stop it with:
 
@@ -232,14 +262,30 @@ Stop it with:
 docker compose down
 ```
 
+### Unraid
+
+The Unraid template is maintained in
+[`unraid-community-apps`](https://github.com/heroeswearkapes/unraid-community-apps/blob/main/templates/TTS-Workbench.xml)
+and uses `heroeswearkapes/tts-workbench:latest`. Configure the WebUI port,
+persistent storage paths, and optional Intel GPU device for your server.
+
+Unraid's Docker manager normally supplies the server's timezone to the
+container automatically. A custom `TZ` variable is only needed to override
+that timezone. See [Timezone and output folders](#timezone-and-output-folders)
+for configuration and upgrade guidance.
+
 ### Intel XPU Docker run
 
 The host needs a working Intel graphics driver and a usable `/dev/dri` render
-device. Pass DRI into the container:
+device. This standalone example stores data in directories under the current
+working directory. For an existing installation, substitute your established
+host storage paths in the volume arguments; `docker run` does not read the
+Compose `.env` file. Pass DRI into the container:
 
 ```bash
 docker run --rm \
   --name tts-workbench \
+  --env TZ=Etc/UTC \
   --device=/dev/dri:/dev/dri \
   --publish 7860:7860 \
   --volume "$PWD/models:/models" \
@@ -247,8 +293,11 @@ docker run --rm \
   --volume "$PWD/input:/input" \
   --volume "$PWD/output:/output" \
   --volume "$PWD/config:/config" \
-  tts-workbench:dev
+  heroeswearkapes/tts-workbench:latest
 ```
+
+Replace `Etc/UTC` with your preferred IANA timezone, such as
+`America/New_York` or `America/Los_Angeles`, to use local-date output folders.
 
 To pass only the render node used during Atlas validation, replace the device
 argument with:
@@ -262,7 +311,7 @@ Device discovery can be checked without starting Gradio:
 ```bash
 docker run --rm \
   --device=/dev/dri:/dev/dri \
-  tts-workbench:dev \
+  heroeswearkapes/tts-workbench:latest \
   tts-workbench-devices --device xpu --xpu-index 0 --json
 ```
 
@@ -318,6 +367,7 @@ dependencies are imported only when their runtime is requested.
 | HTTP port | 7860 |
 | Torch | 2.11.0 XPU build by default |
 | Intel userspace packages | `intel-opencl-icd`, `libze1`, `libze-intel-gpu1` |
+| Timezone database | `tzdata`; named timezones are selected through `TZ` |
 | Persistent paths | `/models`, `/voices`, `/input`, `/output`, `/config` |
 | Healthcheck | HTTP request to `127.0.0.1:7860` |
 
@@ -328,6 +378,97 @@ not require downloading every artifact again.
 The entrypoint checks that all storage paths are writable, prints CPU/XPU
 diagnostics, and then starts Gradio. Models are downloaded lazily rather than
 baked into the image.
+
+## Timezone and output folders
+
+Kokoro, F5-TTS, and Qwen3-TTS organize new audio and metadata under:
+
+```text
+/output/YYYY-MM-DD/<job-id>/
+```
+
+`YYYY-MM-DD` is the container's local date when the completed job is saved.
+For example, at `2026-11-13 16:30` in `America/Los_Angeles`, UTC has already
+reached November 14. The local-date output folder is still `2026-11-13`.
+
+The image includes `tzdata`, so IANA timezone names such as
+`America/Los_Angeles` and `America/New_York` handle daylight saving time
+automatically according to the installed timezone database. Use `Etc/UTC` to
+keep UTC dates. This changes date selection for new jobs; existing output
+folders and files are not renamed, moved, or deleted.
+
+### Choose a timezone
+
+| Deployment | Default behavior | Set a different timezone |
+| --- | --- | --- |
+| Unraid Docker manager | Uses the Unraid server's timezone unless overridden | Add or edit a container Variable with Key `TZ` and an IANA timezone as its Value |
+| Supplied Docker Compose files | Uses `TZ` from the shell or `.env`, with `Etc/UTC` as the fallback when unset or empty | Set `TZ=America/Los_Angeles` in `.env` and recreate the service |
+| Direct `docker run` | Uses the image's local timezone, normally UTC without an override | Add `--env TZ=America/Los_Angeles` when creating the container |
+
+`TZ` sets the container's local timezone generally, including output date
+folders. It is not a separate output-only setting. The standard Unraid
+template leaves the host timezone inheritance intact instead of forcing a
+fixed timezone. Environment variables can be managed in Unraid's container
+configuration screen; see the
+[Unraid container documentation](https://docs.unraid.net/unraid-os/using-unraid-to/run-docker-containers/managing-and-customizing-containers/).
+
+For Compose, edit the existing `.env` file rather than replacing it during an
+upgrade. A `TZ` exported in the shell takes precedence over the value in
+`.env`; check that value if the container uses an unexpected timezone.
+
+### Updating an existing installation
+
+The timezone fix requires the updated image. On Unraid, update TTS Workbench
+from the Docker tab so the container is recreated with the new image.
+
+For a Compose installation created before the timezone fix, also update the
+Compose configuration while preserving your local settings. Alternatively,
+add this entry under the TTS Workbench service's existing `environment`
+mapping so the `TZ` value in `.env` reaches the container:
+
+```yaml
+TZ: ${TZ:-Etc/UTC}
+```
+
+After the configuration is updated, pull the image and recreate the standard
+Compose service:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+For another Compose configuration using the published image, supply the same
+`-f` option you normally use for that installation. For source development,
+update your source checkout and rebuild the local image with
+`docker compose -f docker-compose.dev.yml up -d --build` instead.
+
+Recreating the container applies the selected image and environment while
+retaining data in the configured host storage paths. Restarting an existing
+container does not install a new image or apply changes made only to `.env`.
+
+With the updated image and a valid named `TZ`, a host `/etc/localtime` bind
+mount is not required. If you previously used `TZ=/etc/localtime`, keep that
+workaround until you are ready to switch to a named timezone or Unraid's
+automatic host setting, then verify the result before removing the old mount.
+
+### Verify the timezone
+
+The standard Compose container is named `tts-workbench`. For Unraid or a
+custom deployment, replace that name below with the actual container name:
+
+```bash
+docker exec tts-workbench dpkg-query -W tzdata
+docker exec tts-workbench printenv TZ
+docker exec tts-workbench date
+docker exec tts-workbench python -c 'from datetime import datetime; print(datetime.now().astimezone().isoformat())'
+```
+
+Check that `tzdata` is installed and the operating system and Python agree on
+the intended local time and UTC offset. Generate a short audio sample and
+confirm that its new output folder matches the local date. Testing after UTC
+midnight but before local midnight makes the change easy to verify for
+timezones west of UTC.
 
 ## Runtime Status panel
 
@@ -400,14 +541,26 @@ config/
 | `models/` | Engine weights and persistent framework caches |
 | `voices/` | Independently downloaded preset voice assets |
 | `input/` | Persistent user-managed reference audio and text |
-| `output/` | Date/job-scoped generated WAV files and JSON metadata |
+| `output/` | Generated WAV files and JSON metadata grouped by local date and job ID |
 | `config/` | Persistent configuration storage reserved for application settings |
 
 In Docker these map directly to `/models`, `/voices`, `/input`, `/output`, and
 `/config`. Gradio is allowed to serve generated files from `/output` and trusted
 inputs from `/voices` and `/input`; `/models` is intentionally not exposed.
 
+The dated output folder follows the configured container timezone. See
+[Timezone and output folders](#timezone-and-output-folders) for deployment
+defaults and configuration examples.
+
 ## Troubleshooting
+
+### Output folders use an unexpected date
+
+Confirm that the container uses the updated image, then check its `TZ` value
+and local time with the [verification commands](#verify-the-timezone). Compose
+defaults to UTC when `TZ` is unset or empty, while normal Unraid Docker manager
+installations receive the server's timezone automatically. Check a newly
+generated job: older output folders retain their original names.
 
 ### XPU is not detected
 
@@ -421,7 +574,7 @@ Then verify that it was passed into the container and that the XPU-enabled Torch
 build is installed:
 
 ```bash
-docker run --rm --device=/dev/dri:/dev/dri tts-workbench:dev \
+docker run --rm --device=/dev/dri:/dev/dri heroeswearkapes/tts-workbench:latest \
   python -c 'import torch; print(torch.__version__); print(torch.xpu.is_available()); print(torch.xpu.device_count())'
 ```
 
@@ -442,7 +595,7 @@ environment:
 Verify them inside the image:
 
 ```bash
-docker run --rm --entrypoint dpkg-query tts-workbench:dev \
+docker run --rm --entrypoint dpkg-query heroeswearkapes/tts-workbench:latest \
   --show intel-opencl-icd libze1 libze-intel-gpu1
 ```
 
@@ -556,3 +709,19 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 The standalone Qwen probe and its historical validation notes are documented in
 [`experiments/qwen/README.md`](experiments/qwen/README.md) and
 [`docs/qwen-runtime-research.md`](docs/qwen-runtime-research.md).
+
+## Acknowledgments
+
+Thank you to [@Acheron4171](https://github.com/Acheron4171) for the detailed
+timezone bug report in [issue #1](https://github.com/heroeswearkapes/tts-workbench/issues/1)
+and for contributing the fixes in PRs
+[#2](https://github.com/heroeswearkapes/tts-workbench/pull/2),
+[#3](https://github.com/heroeswearkapes/tts-workbench/pull/3),
+[#4](https://github.com/heroeswearkapes/tts-workbench/pull/4),
+[#5](https://github.com/heroeswearkapes/tts-workbench/pull/5), and
+[#6](https://github.com/heroeswearkapes/tts-workbench/pull/6).
+
+Their contributions added timezone data to the Docker image, configurable
+timezone support to the Compose files, and local-date output folders across
+Kokoro, F5-TTS, and Qwen3-TTS. Thank you for helping improve TTS Workbench for
+everyone who uses it!
